@@ -11,8 +11,8 @@
 #if defined(supportsWKWebKit)
 
 @implementation WKWebViewJavascriptBridge {
-    WKWebView* _webView;
-    id _webViewDelegate;
+    __weak WKWebView* _webView;
+    __weak id<WKNavigationDelegate> _webViewDelegate;
     long _uniqueId;
     WebViewJavascriptBridgeBase *_base;
 }
@@ -71,9 +71,11 @@
 
 - (void)dealloc {
     _base = nil;
-    _webView = nil;
-    _webViewDelegate = nil;
+    
     _webView.navigationDelegate = nil;
+    _webView = nil;
+    
+    _webViewDelegate = nil;
 }
 
 
@@ -95,10 +97,82 @@
     }];
 }
 
-- (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation
-{
+
+
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
+    if (webView != _webView) { return; }
+    NSURL *url = navigationAction.request.URL;
+    __strong typeof(_webViewDelegate) strongDelegate = _webViewDelegate;
+
+    if ([_base isCorrectProcotocolScheme:url]) {
+        if ([_base isCorrectHost:url]) {
+            [self WKFlushMessageQueue];
+        } else {
+            [_base logUnkownMessage:url];
+        }
+        decisionHandler(WKNavigationActionPolicyCancel);
+        return;
+    }
+    
+    if (strongDelegate && [strongDelegate respondsToSelector:_cmd]) {
+        [_webViewDelegate webView:webView decidePolicyForNavigationAction:navigationAction decisionHandler:decisionHandler];
+    } else {
+        decisionHandler(WKNavigationActionPolicyAllow);
+    }
+}
+
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationResponse:(WKNavigationResponse *)navigationResponse decisionHandler:(void (^)(WKNavigationResponsePolicy))decisionHandler {
     if (webView != _webView) { return; }
 
+    __strong typeof(_webViewDelegate) strongDelegate = _webViewDelegate;
+    if (strongDelegate && [strongDelegate respondsToSelector:_cmd]) {
+        [strongDelegate webView:webView decidePolicyForNavigationResponse:navigationResponse decisionHandler:decisionHandler];
+    }else {
+        decisionHandler(WKNavigationResponsePolicyAllow);
+    }
+}
+
+- (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(WKNavigation *)navigation {
+    if (webView != _webView) { return; }
+    
+    _base.numRequestsLoading++;
+    
+    __strong typeof(_webViewDelegate) strongDelegate = _webViewDelegate;
+    if (strongDelegate && [strongDelegate respondsToSelector:@selector(webView:didStartProvisionalNavigation:)]) {
+        [strongDelegate webView:webView didStartProvisionalNavigation:navigation];
+    }
+}
+
+- (void)webView:(WKWebView *)webView didReceiveServerRedirectForProvisionalNavigation:(WKNavigation *)navigation {
+    if (webView != _webView) { return; }
+
+    __strong typeof(_webViewDelegate) strongDelegate = _webViewDelegate;
+    if (strongDelegate && [strongDelegate respondsToSelector:_cmd]) {
+        [strongDelegate webView:webView didReceiveServerRedirectForProvisionalNavigation:navigation];
+    }
+}
+
+- (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    if (webView != _webView) { return; }
+
+    __strong typeof(_webViewDelegate) strongDelegate = _webViewDelegate;
+    if (strongDelegate && [strongDelegate respondsToSelector:_cmd]) {
+        [strongDelegate webView:webView didFailProvisionalNavigation:navigation withError:error];
+    }
+}
+
+- (void)webView:(WKWebView *)webView didCommitNavigation:(WKNavigation *)navigation {
+    if (webView != _webView) { return; }
+
+    __strong typeof(_webViewDelegate) strongDelegate = _webViewDelegate;
+    if (strongDelegate && [strongDelegate respondsToSelector:_cmd]) {
+        [strongDelegate webView:webView didCommitNavigation:navigation];
+    }
+}
+
+- (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+    if (webView != _webView) { return; }
+    
     _base.numRequestsLoading--;
     
     if (_base.numRequestsLoading == 0) {
@@ -114,44 +188,7 @@
 }
 
 
-- (void)webView:(WKWebView *)webView
-decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction
-decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
-    if (webView != _webView) { return; }
-    NSURL *url = navigationAction.request.URL;
-    __strong typeof(_webViewDelegate) strongDelegate = _webViewDelegate;
-
-    if ([_base isCorrectProcotocolScheme:url]) {
-        if ([_base isCorrectHost:url]) {
-            [self WKFlushMessageQueue];
-        } else {
-            [_base logUnkownMessage:url];
-        }
-        [webView stopLoading];
-    }
-    
-    if (strongDelegate && [strongDelegate respondsToSelector:@selector(webView:decidePolicyForNavigationAction:decisionHandler:)]) {
-        [_webViewDelegate webView:webView decidePolicyForNavigationAction:navigationAction decisionHandler:decisionHandler];
-    } else {
-        decisionHandler(WKNavigationActionPolicyAllow);
-    }
-}
-
-- (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(WKNavigation *)navigation {
-    if (webView != _webView) { return; }
-    
-    _base.numRequestsLoading++;
-    
-    __strong typeof(_webViewDelegate) strongDelegate = _webViewDelegate;
-    if (strongDelegate && [strongDelegate respondsToSelector:@selector(webView:didStartProvisionalNavigation:)]) {
-        [strongDelegate webView:webView didStartProvisionalNavigation:navigation];
-    }
-}
-
-
-- (void)webView:(WKWebView *)webView
-didFailNavigation:(WKNavigation *)navigation
-      withError:(NSError *)error {
+- (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
     if (webView != _webView) { return; }
     
     _base.numRequestsLoading--;
@@ -162,11 +199,30 @@ didFailNavigation:(WKNavigation *)navigation
     }
 }
 
-- (NSString*) _evaluateJavascript:(NSString*)javascriptCommand
-{
+- (void)webView:(WKWebView *)webView didReceiveAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition disposition, NSURLCredential * _Nullable credential))completionHandler {
+    if (webView != _webView) { return; }
+    
+    __strong typeof(_webViewDelegate) strongDelegate = _webViewDelegate;
+    if (strongDelegate && [strongDelegate respondsToSelector:_cmd]) {
+        [strongDelegate webView:webView didReceiveAuthenticationChallenge:challenge completionHandler:completionHandler];
+    }else {
+        completionHandler(NSURLSessionAuthChallengeRejectProtectionSpace,nil);
+    }
+}
+- (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView {
+    if (webView != _webView) { return; }
+
+    __strong typeof(_webViewDelegate) strongDelegate = _webViewDelegate;
+    if (strongDelegate && [strongDelegate respondsToSelector:_cmd]) {
+        [strongDelegate webViewWebContentProcessDidTerminate:webView];
+    }
+}
+
+- (NSString*) _evaluateJavascript:(NSString*)javascriptCommand {
     [_webView evaluateJavaScript:javascriptCommand completionHandler:nil];
     return NULL;
 }
+
 
 
 
