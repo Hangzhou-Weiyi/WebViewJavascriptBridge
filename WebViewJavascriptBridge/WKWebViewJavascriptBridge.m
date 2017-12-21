@@ -92,8 +92,9 @@
 
 
 - (void)WKFlushMessageQueue {
+    __weak typeof(_base) weakBase = _base;
     [_webView evaluateJavaScript:[_base webViewJavascriptFetchQueyCommand] completionHandler:^(NSString* result, NSError* error) {
-        [_base flushMessageQueue:result];
+        [weakBase flushMessageQueue:result];
     }];
 }
 
@@ -178,8 +179,9 @@
     _base.numRequestsLoading--;
     
     if (_base.numRequestsLoading == 0) {
+        __weak typeof(_base) weakBase = _base;
         [webView evaluateJavaScript:[_base webViewJavascriptCheckCommand] completionHandler:^(NSString *result, NSError *error) {
-            [_base injectJavascriptFile:![result boolValue]];
+            [weakBase injectJavascriptFile:![result boolValue]];
         }];
     }
     
