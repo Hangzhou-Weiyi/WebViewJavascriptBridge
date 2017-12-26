@@ -106,7 +106,8 @@ static bool logging = false;
             }
             
             if (!handler) {
-                [NSException raise:@"WVJBNoHandlerException" format:@"No handler for message from JS: %@", message];
+                NSLog(@"WebViewJavascriptBridge: No handler for message from JS: %@", message);
+                continue;
             }
             
             handler(message[@"data"], responseCallback);
